@@ -1,0 +1,7 @@
+apps:
+  - name: 'server'
+    script : 'npm'
+    args   : 'run-script server'
+  - name   : 'remover'
+    script : 'npm'
+    args   : 'run-script remover'

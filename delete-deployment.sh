@@ -1,5 +1,6 @@
 # Save key, authenticate and set compute zone
 echo $GCLOUD_KEY_JSON > ${HOME}/gcloud-service-key.json
+echo "Logging on to Google Cloud"
 gcloud auth activate-service-account --key-file=${HOME}/gcloud-service-key.json --project $GCLOUD_PROJECT_NAME
 gcloud config set compute/zone $GCLOUD_COMPUTE_ZONE
 
@@ -10,4 +11,5 @@ gcloud container clusters get-credentials $GCLOUD_CLUSTER_NAME \
   --project $GCLOUD_PROJECT_NAME
 
 # Remove deployment
+echo "Removing release $RELEASE_NAME"
 helm delete --purge $RELEASE_NAME

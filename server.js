@@ -46,11 +46,11 @@ queue.process('remover', function (job, done){
   // TODO: Select release name with deployment "branchname" label.
   // TODO: This could be used in future too: https://github.com/helm/helm/issues/4639
   let branchname = job.data.branch.toLowerCase().replace(/[^a-z0-9]/gi,'-');
-  var branchname_hash = crypto.createHash('sha256').update(branchname).digest("hex").substring(1, 4);
-  var branchname_truncated = branchname.substring(1, 15).replace(/\-$/, '');
+  const branchname_hash = crypto.createHash('sha256').update(branchname).digest("hex").substring(1, 4);
+  const branchname_truncated = branchname.substring(1, 15).replace(/\-$/, '');
   const reponame = job.data.project.toLowerCase().replace(/[^a-z0-9]/gi,'-');
-  var reponame_hash = crypto.createHash('sha256').update(reponame).digest("hex").substring(1, 4);
-  var reponame_truncated = reponame.substring(1, 15).replace(/\-$/, '');
+  const reponame_hash = crypto.createHash('sha256').update(reponame).digest("hex").substring(1, 4);
+  const reponame_truncated = reponame.substring(1, 15).replace(/\-$/, '');
   
   if (branchname.length >= 25) {
     branchname = branchname_truncated + '-' + branchname_hash;
@@ -65,7 +65,7 @@ queue.process('remover', function (job, done){
   process.env.RELEASE_NAME = release_name;
   
   // Log on to cluster and remove helm deployment
-  var output = child_process.execSync('/app/delete-deployment.sh');
+  const output = child_process.execSync('/app/delete-deployment.sh');
   console.log(output.toString());
   
   done();
@@ -76,7 +76,7 @@ function queue_branch_removal(project, branch, data) {
   console.log('SERVER: Branch deletion event');
 
   // Create new remover job
-  var job = queue.create('remover', {
+  const job = queue.create('remover', {
     url: data.repository.url,
     project: project,
     branch: branch

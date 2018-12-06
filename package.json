@@ -6,7 +6,6 @@
   "main": "server.js",
   "scripts": {
     "server": "node server.js",
-    "remover": "node remover.js"
   },
   "dependencies": {
     "githubhook": "^1.9.3",

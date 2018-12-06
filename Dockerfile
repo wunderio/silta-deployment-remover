@@ -1,4 +1,4 @@
-FROM keymetrics/pm2:8-alpine
+FROM node:alpine
 
 RUN apk add curl bash python
 
@@ -30,5 +30,5 @@ RUN npm install --production
 EXPOSE 80
 
 # Start application
-ENTRYPOINT pm2-runtime multi_node.yml
+ENTRYPOINT npm run-script server
 

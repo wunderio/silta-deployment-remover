@@ -1,7 +1,10 @@
 'use strict';
 
-var kue = require('kue');
-var queue = kue.createQueue({
+const crypto = require('crypto');
+const child_process = require('child_process');
+
+const kue = require('kue');
+const queue = kue.createQueue({
   redis: {
     port: 6379,
     host: process.env.REDIS_HOST,
@@ -10,51 +13,89 @@ var queue = kue.createQueue({
 });
 
 // https://github.com/nlf/node-github-hook
-var githubhook = require('githubhook');
-var github = githubhook({
+const githubhook = require('githubhook');
+const github = githubhook({
   'port': '80', 
-  'path': '/webhooks', 
+  'path': '/webhooks',
   'secret': process.env.WEBHOOKS_SECRET 
 });
 github.listen();
 
-// github.on('*', function (event, project, branch, data) {
-//   console.log('SERVER: Webhook event * |', event, '|', project, '|', branch);
-// });
+// Webhook - delete event
+github.on('delete', function (project, branch, data) {
+  // https://developer.github.com/webhooks/#events
+  queue_branch_removal(project, branch, data)
+});
 
-// https://developer.github.com/webhooks/#events
+// Webhook - push event
 github.on('push', function (project, branch, data) {
   if (typeof data.deleted !== 'undefined' && typeof data.after !== 'undefined') {
     // Special commit state for when the branch was removed
+    // https://developer.github.com/webhooks/#events
     if ((data.deleted == true) && (data.after == '0000000000000000000000000000000000000000')) {      
       queue_branch_removal(project, branch, data)
     }
   }
 });
 
-// https://developer.github.com/webhooks/#events
-github.on('delete', function (project, branch, data) {
-  queue_branch_removal(project, branch, data)
+queue.process('remover', function (job, done){
+  console.log('REMOVER: Job', job.id, 'started');
+
+  // Calculate release name to reflect this one
+  // https://github.com/wunderio/silta-circleci/blob/feature/add-deployproc-scripts/utils/set_release_name.sh
+  // TODO: Select release name with deployment "branchname" label.
+  // TODO: This could be used in future too: https://github.com/helm/helm/issues/4639
+  const branchname = job.data.branch.toLowerCase().replace(/[^a-z0-9]/gi,'-');
+  var branchname_hash = crypto.createHash('sha256').update(branchname).digest("hex").substring(1, 4);
+  var branchname_truncated = branchname.substring(1, 15).replace(/\-$/, '');
+  const reponame = job.data.project.toLowerCase().replace(/[^a-z0-9]/gi,'-');
+  var reponame_hash = crypto.createHash('sha256').update(reponame).digest("hex").substring(1, 4);
+  var reponame_truncated = reponame.substring(1, 15).replace(/\-$/, '');
+  
+  if (branchname.length >= 25) {
+    branchname = branchname_truncated + '-' + branchname_hash;
+  }
+  if (reponame.length >= 25) {
+    reponame = reponame_truncated + '-' + reponame_hash;
+  }
+
+  const release_name = reponame + '--' + branchname;
+  
+  // Pass release name as environment variable
+  process.env.RELEASE_NAME = release_name;
+  
+  // Log on to cluster and remove helm deployment
+  var output = child_process.execSync('/app/delete-deployment.sh');
+  console.log(output.toString());
+  
+  done();
 });
 
 // Adds branch removal job to remover queue
 function queue_branch_removal(project, branch, data) {
   console.log('SERVER: Branch deletion event');
 
+  // Create new remover job
   var job = queue.create('remover', {
     url: data.repository.url,
     project: project,
     branch: branch
   });
 
+  // Attach event listeners
   job
     .on('enqueue', function (){
       console.log('SERVER: Job', job.id, 'created');
     })
+    .on('complete', function (){
+      console.log('SERVER: Job', job.id, 'completed');
+    })
     .on('failed', function (errorMessage){
       console.log('SERVER: Job', job.id, 'has failed:', errorMessage);
     })
-    .removeOnComplete(true)
+  
+  // Save job to queue
+  job.removeOnComplete(true)
     .attempts(5)
     .save(function(err) {
       if (err) {

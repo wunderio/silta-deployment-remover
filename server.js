@@ -45,7 +45,7 @@ queue.process('remover', function (job, done){
   // https://github.com/wunderio/silta-circleci/blob/feature/add-deployproc-scripts/utils/set_release_name.sh
   // TODO: Select release name with deployment "branchname" label.
   // TODO: This could be used in future too: https://github.com/helm/helm/issues/4639
-  const branchname = job.data.branch.toLowerCase().replace(/[^a-z0-9]/gi,'-');
+  let branchname = job.data.branch.toLowerCase().replace(/[^a-z0-9]/gi,'-');
   var branchname_hash = crypto.createHash('sha256').update(branchname).digest("hex").substring(1, 4);
   var branchname_truncated = branchname.substring(1, 15).replace(/\-$/, '');
   const reponame = job.data.project.toLowerCase().replace(/[^a-z0-9]/gi,'-');

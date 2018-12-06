@@ -5,7 +5,7 @@
   "author": "Janis Bebritis <janis.bebritis@wunder.io>",
   "main": "server.js",
   "scripts": {
-    "server": "node server.js",
+    "server": "node server.js"
   },
   "dependencies": {
     "githubhook": "^1.9.3",

@@ -30,5 +30,4 @@ RUN npm install --production
 EXPOSE 80
 
 # Start application
-ENTRYPOINT npm run-script server
-
+ENTRYPOINT ["npm","run-script","server"]

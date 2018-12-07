@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const child_process = require('child_process');
 
 const kue = require('kue');
+console.log('Using redis host:', process.env.REDIS_HOST);
 const queue = kue.createQueue({
   redis: {
     port: 6379,

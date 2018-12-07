@@ -49,7 +49,7 @@ queue.process('remover', function (job, done){
   let branchname = job.data.branch.toLowerCase().replace(/[^a-z0-9]/gi,'-');
   const branchname_hash = crypto.createHash('sha256').update(branchname).digest("hex").substring(1, 4);
   const branchname_truncated = branchname.substring(1, 15).replace(/\-$/, '');
-  const reponame = job.data.project.toLowerCase().replace(/[^a-z0-9]/gi,'-');
+  let reponame = job.data.project.toLowerCase().replace(/[^a-z0-9]/gi,'-');
   const reponame_hash = crypto.createHash('sha256').update(reponame).digest("hex").substring(1, 4);
   const reponame_truncated = reponame.substring(1, 15).replace(/\-$/, '');
   

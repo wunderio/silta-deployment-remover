@@ -49,13 +49,17 @@ queue.process('remover', function (job, done){
   let branchname = job.data.branch.toLowerCase().replace(/[^a-z0-9]/gi,'-');
   const branchname_hash = crypto.createHash('sha256').update(branchname).digest("hex").substring(0, 4);
   const branchname_truncated = branchname.substring(0, 15).replace(/\-$/, '');
+    if (branchname.length >= 25) {
+    branchname = branchname_truncated + '-' + branchname_hash;
+  }
+
   let reponame = job.data.project.toLowerCase().replace(/[^a-z0-9]/gi,'-');
   const reponame_hash = crypto.createHash('sha256').update(reponame).digest("hex").substring(0, 4);
   const reponame_truncated = reponame.substring(0, 15).replace(/\-$/, '');
-  
-  if (branchname.length >= 25) {
-    branchname = branchname_truncated + '-' + branchname_hash;
-  }
+
+  // Pass unshortened repo name as environment variable for the namespace.
+  process.env.NAMESPACE = reponame;
+
   if (reponame.length >= 25) {
     reponame = reponame_truncated + '-' + reponame_hash;
   }

@@ -13,3 +13,6 @@ gcloud container clusters get-credentials $GCLOUD_CLUSTER_NAME \
 # Remove deployment
 echo "Removing release $RELEASE_NAME"
 helm delete --purge $RELEASE_NAME
+
+# Remove jobs
+kubectl delete job -l release=$RELEASE_NAME -n $NAMESPACE

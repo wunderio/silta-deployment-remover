@@ -16,3 +16,6 @@ helm delete --purge $RELEASE_NAME
 
 # Remove jobs
 kubectl delete job -l release=$RELEASE_NAME -n $NAMESPACE
+
+# Remove PersistentVolumeClaim left over from StatefulSets
+kubectl delete pvc -l release=$RELEASE_NAME -n $NAMESPACE

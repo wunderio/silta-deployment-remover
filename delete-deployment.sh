@@ -1,7 +1,5 @@
 
-kubectl version --short
-
-if [[ $? -ne 0 ]]; then
+if ! kubectl auth can-i delete pod ; then
   # Save key, authenticate and set compute zone
   echo $GCLOUD_KEY_JSON > ${HOME}/gcloud-service-key.json
   echo "Logging on to Google Cloud"

@@ -70,15 +70,17 @@ queue.process('remover', function (job, done){
   process.env.RELEASE_NAME = release_name;
   
   // Log on to cluster and remove helm deployment
-  try {
-    const output = child_process.execSync('/app/delete-deployment.sh');
-    console.log(output.toString());
-  } 
-  catch (err) {
-    console.log('ERROR:', err)
-  }
-  
-  done();
+  child_process.exec('/app/delete-deployment.sh', function (error, stdout, stderr) {
+    console.log(stdout);
+    if (error) {
+      console.log('ERROR:', stderr);
+      done(error);
+    }
+    else {
+      done();
+      console.log(output.toString());
+    }
+  });
 });
 
 // Adds branch removal job to remover queue

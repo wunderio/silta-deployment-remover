@@ -21,6 +21,13 @@ RUN curl -o /tmp/$FILENAME ${HELM_URL} \
   && mv /tmp/linux-amd64/helm /bin/helm \
   && helm init --client-only
 
+# TODO: clean up once we are done with helm 2
+RUN curl -o /tmp/helm3.tar.gz https://get.helm.sh/helm-v3.0.0-linux-amd64.tar.gz \
+  && tar -zxvf /tmp/helm3.tar.gz -C /tmp \
+  && rm /tmp/helm3.tar.gz \
+  && find /tmp \
+  && mv /tmp/linux-amd64/helm /bin/helm3
+
 # Copy node application
 COPY . /app
 WORKDIR "/app"

@@ -78,7 +78,6 @@ queue.process('remover', function (job, done){
     }
     else {
       done();
-      console.log(output.toString());
     }
   });
 });

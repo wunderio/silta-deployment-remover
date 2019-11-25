@@ -17,6 +17,9 @@ fi
 echo "Removing release $RELEASE_NAME"
 helm delete --purge $RELEASE_NAME
 
+# TODO: clean up once we are done with helm 2
+helm3 delete $RELEASE_NAME
+
 # Remove jobs
 kubectl delete job -l release=$RELEASE_NAME -n $NAMESPACE
 

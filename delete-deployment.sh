@@ -25,3 +25,6 @@ kubectl delete job -l release=$RELEASE_NAME -n $NAMESPACE
 
 # Remove PersistentVolumeClaim left over from StatefulSets
 kubectl delete pvc -l release=$RELEASE_NAME -n $NAMESPACE
+
+# Also remove PersistentVolumeClaims from Elasticsearch, that chart has different labels.
+kubectl delete pvc -l app="${RELEASE_NAME}-es" -n $NAMESPACE

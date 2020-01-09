@@ -68,6 +68,9 @@ queue.process('remover', function (job, done){
   
   // Pass release name as environment variable
   process.env.RELEASE_NAME = release_name;
+
+  // Get the simpler helm3 release name.
+  process.env.HELM3_RELEASE_NAME = job.data.branch.toLowerCase().replace(/[^a-z0-9]/gi,'-');
   
   // Log on to cluster and remove helm deployment
   child_process.exec('/app/delete-deployment.sh', function (error, stdout, stderr) {

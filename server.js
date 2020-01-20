@@ -42,35 +42,11 @@ github.on('push', function (project, branch, data) {
 queue.process('remover', function (job, done){
   console.log('REMOVER: Job', job.id, 'started');
 
-  // Calculate release name to reflect this one
-  // https://github.com/wunderio/silta-circleci/blob/feature/add-deployproc-scripts/utils/set_release_name.sh
-  // TODO: Select release name with deployment "branchname" label.
-  // TODO: This could be used in future too: https://github.com/helm/helm/issues/4639
-  let branchname = job.data.branch.toLowerCase().replace(/[^a-z0-9]/gi,'-');
-  const branchname_hash = crypto.createHash('sha256').update(branchname).digest("hex").substring(0, 4);
-  const branchname_truncated = branchname.substring(0, 15).replace(/\-$/, '');
-    if (branchname.length >= 20) {
-    branchname = branchname_truncated + '-' + branchname_hash;
-  }
+  // Pass repo name as environment variable for the namespace.
+  process.env.NAMESPACE = job.data.project.toLowerCase().replace(/[^a-z0-9]/gi,'-');;
 
-  let reponame = job.data.project.toLowerCase().replace(/[^a-z0-9]/gi,'-');
-  const reponame_hash = crypto.createHash('sha256').update(reponame).digest("hex").substring(0, 4);
-  const reponame_truncated = reponame.substring(0, 15).replace(/\-$/, '');
-
-  // Pass unshortened repo name as environment variable for the namespace.
-  process.env.NAMESPACE = reponame;
-
-  if (reponame.length >= 20) {
-    reponame = reponame_truncated + '-' + reponame_hash;
-  }
-
-  const release_name = reponame + '--' + branchname;
-  
   // Pass release name as environment variable
-  process.env.RELEASE_NAME = release_name;
-
-  // Get the simpler helm3 release name.
-  process.env.HELM3_RELEASE_NAME = job.data.branch.toLowerCase().replace(/[^a-z0-9]/gi,'-');
+  process.env.RELEASE_NAME = job.data.branch.toLowerCase().replace(/[^a-z0-9]/gi,'-');
   
   // Log on to cluster and remove helm deployment
   child_process.exec('/app/delete-deployment.sh', function (error, stdout, stderr) {

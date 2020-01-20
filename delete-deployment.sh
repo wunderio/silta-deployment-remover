@@ -15,19 +15,13 @@ fi
 
 # Remove deployment
 echo "Removing release $RELEASE_NAME"
-helm delete --purge $RELEASE_NAME
-
-# TODO: clean up once we are done with helm 2
-helm3 delete $HELM3_RELEASE_NAME -n $NAMESPACE
+helm delete -n $NAMESPACE $RELEASE_NAME
 
 # Remove jobs
 kubectl delete job -l release=$RELEASE_NAME -n $NAMESPACE
-kubectl delete job -l release=$HELM3_RELEASE_NAME -n $NAMESPACE
 
 # Remove PersistentVolumeClaim left over from StatefulSets
 kubectl delete pvc -l release=$RELEASE_NAME -n $NAMESPACE
-kubectl delete pvc -l release=$HELM3_RELEASE_NAME -n $NAMESPACE
 
 # Also remove PersistentVolumeClaims from Elasticsearch, that chart has different labels.
 kubectl delete pvc -l app="${RELEASE_NAME}-es" -n $NAMESPACE
-kubectl delete pvc -l app="${HELM3_RELEASE_NAME}-es" -n $NAMESPACE

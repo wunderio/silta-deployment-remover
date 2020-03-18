@@ -30,8 +30,8 @@ fi
 # Legacy remover
 remove_release
 
-# Select release name label based on branch name
-RELEASE_NAMES=$(kubectl -n "${NAMESPACE}" get cm -l branchName="${BRANCH_NAME}" -o 'jsonpath={.items[*].metadata.labels.release}')
+# Select release name label based on branchName in configmapdata
+RELEASE_NAMES=$(kubectl -n "${NAMESPACE}" get cm -o json | jq -r '.items | map(select(.data.branchName == "${BRANCH_NAME}" )) | .[].metadata.labels.release')
 
 # Iterate over release names and remove them
 for RELEASE_NAME in $RELEASE_NAMES

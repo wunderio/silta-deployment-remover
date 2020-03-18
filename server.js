@@ -49,7 +49,7 @@ queue.process('remover', function (job, done){
   process.env.RELEASE_NAME = job.data.branch.toLowerCase().replace(/[^a-z0-9]/gi,'-');
 
   // Pass branch name as environment variable
-  process.env.BRANCH_NAME = job.data.branch.toLowerCase().replace(/[^a-z0-9]/gi,'-');
+  process.env.BRANCH_NAME = job.data.branch;
   
   // Log on to cluster and remove helm deployment
   child_process.exec('/app/delete-deployment.sh', function (error, stdout, stderr) {

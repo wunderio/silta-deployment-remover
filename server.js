@@ -45,8 +45,11 @@ queue.process('remover', function (job, done){
   // Pass repo name as environment variable for the namespace.
   process.env.NAMESPACE = job.data.project.toLowerCase().replace(/[^a-z0-9]/gi,'-');;
 
-  // Pass release name as environment variable
+  // Pass release name as environment variable (legacy mode)
   process.env.RELEASE_NAME = job.data.branch.toLowerCase().replace(/[^a-z0-9]/gi,'-');
+
+  // Pass branch name as environment variable
+  process.env.BRANCH_NAME = job.data.branch.toLowerCase().replace(/[^a-z0-9]/gi,'-');
   
   // Log on to cluster and remove helm deployment
   child_process.exec('/app/delete-deployment.sh', function (error, stdout, stderr) {

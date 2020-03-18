@@ -1,16 +1,16 @@
 remove_release () {
   # Remove deployment
   echo "Removing release $RELEASE_NAME"
-  helm delete -n $NAMESPACE $RELEASE_NAME
+  helm delete -n "$NAMESPACE" "$RELEASE_NAME"
 
   # Remove jobs
-  kubectl delete job -l release=$RELEASE_NAME -n $NAMESPACE
+  kubectl delete job -l release="$RELEASE_NAME" -n "$NAMESPACE"
 
   # Remove PersistentVolumeClaim left over from StatefulSets
-  kubectl delete pvc -l release=$RELEASE_NAME -n $NAMESPACE
+  kubectl delete pvc -l release="$RELEASE_NAME" -n "$NAMESPACE"
 
   # Also remove PersistentVolumeClaims from Elasticsearch, that chart has different labels.
-  kubectl delete pvc -l app="${RELEASE_NAME}-es" -n $NAMESPACE
+  kubectl delete pvc -l app="${RELEASE_NAME}-es" -n "$NAMESPACE"
 }
 
 if ! kubectl auth can-i delete pod ; then

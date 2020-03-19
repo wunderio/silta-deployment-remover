@@ -20,8 +20,7 @@ This container exposes GIT webhooks that will trigger kubernetes cluster helm de
 
 1. You have to add a custom application to your Github organisation (`https://github.com/organizations/<org name>/settings/apps/new`). Minimal configuration needs `Webhook URL` and `Webhook secret (optional)` defined. 
 
-2. Aplication permissions & webhooks section, add `Repository contents` r/o permission and check `Delete (Branch or tag deleted.)` option in `
-Subscribe to events` section.
+2. Application permissions & webhooks section, add `Repository contents` r/o permission and check `Delete (Branch or tag deleted.)` option in `Subscribe to events` section.
 
 3. Enable this application in your organisation (`https://github.com/organizations/<org name>/settings/apps/<app name>/installations`). URL address is `<host>/webhooks` (port 80)
 

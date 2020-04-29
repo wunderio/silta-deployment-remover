@@ -1,6 +1,6 @@
 FROM node:10-alpine
 
-RUN apk add curl bash python
+RUN apk add curl bash python jq
 
 # Add gcloud CLI
 RUN curl -sSL https://sdk.cloud.google.com | bash \

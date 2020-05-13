@@ -31,7 +31,7 @@ fi
 remove_release
 
 # Select release name label based on branchName in configmapdata
-RELEASE_NAMES=$(kubectl -n "${NAMESPACE}" get cm -o json | jq -r '.items | map(select(.data.branchName == "${BRANCH_NAME}" )) | .[].metadata.labels.release')
+RELEASE_NAMES=$(kubectl -n "${NAMESPACE}" get cm -o json | jq -r '.items | map(select(.data.branchName == env.BRANCH_NAME )) | .[].metadata.labels.release')
 
 # Iterate over release names and remove them
 for RELEASE_NAME in $RELEASE_NAMES

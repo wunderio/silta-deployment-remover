@@ -10,11 +10,8 @@ This container exposes GIT webhooks that will trigger kubernetes cluster helm de
   - WEBHOOKS_SECRET
   - REDIS_HOST
   - REDIS_PASSWORD
-  - GCLOUD_KEY_JSON
-  - GCLOUD_PROJECT_NAME
-  - GCLOUD_COMPUTE_ZONE
-  - GCLOUD_CLUSTER_NAME
 
+3. Do deployment with a `serviceAccountName` that has permissions to remove other pods and helm releases.
 
 # Configuration
 
@@ -23,4 +20,3 @@ This container exposes GIT webhooks that will trigger kubernetes cluster helm de
 2. Application permissions & webhooks section, add `Repository contents` r/o permission and check `Delete (Branch or tag deleted.)` option in `Subscribe to events` section.
 
 3. Enable this application in your organisation (`https://github.com/organizations/<org name>/settings/apps/<app name>/installations`). URL address is `<host>/webhooks` (port 80)
-

@@ -2,6 +2,21 @@
 
 This container exposes GIT webhooks that will trigger kubernetes cluster helm deployment removal on branch deletion. Once webhook request is received, it will log on to Google Kubernetes Cluster and remove the deployment.
 
+Compatibility:
+- Github webhooks ([webhook documentation](https://docs.github.com/en/developers/webhooks-and-events/webhooks/webhook-events-and-payloads#push))
+  - Payload URL: `<domain>/webhooks`
+  - Content type: `application/x-www-form-urlencoded`
+  - Secret: `<same as WEBHOOKS_SECRET>`
+  - Individual events: `Branch or tag deletion`
+- Azure Repos service Hooks ([webhook documentation](https://docs.microsoft.com/en-us/azure/devops/service-hooks/services/webhooks?view=azure-devops)):
+  - Service: `Web Hooks`
+  - Trigger on this type of event: `Code pushed`
+  - URL: `<domain>/webhooks`
+  - Basic authentication username: `<any>`
+  - Basic authentication password: `<same as WEBHOOKS_SECRET>`
+- (untested) GitLab ([webhook documentation](https://docs.gitlab.com/ee/user/project/integrations/webhook_events.html#push-events))
+- (untested) Bitbucket ([webhook documentation](https://support.atlassian.com/bitbucket-cloud/docs/event-payloads/#Push))
+
 # Deployment requirements 
 1. Redis server for task queue
 

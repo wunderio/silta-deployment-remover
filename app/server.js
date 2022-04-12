@@ -13,7 +13,7 @@ const queue = kue.createQueue({
   }
 });
 
-// https://github.com/nlf/node-github-hook
+// https://github.com/wunderio/node-github-hook
 const githubhook = require('githubhook');
 const github = githubhook({
   'port': '80', 
@@ -34,13 +34,15 @@ github.on('push', function (project, branch, data) {
     // Special commit state for when the branch was removed
     // https://developer.github.com/webhooks/#events
     if ((data.deleted == true) && (data.after == '0000000000000000000000000000000000000000')) {      
+      branch = branch.replace(/^(refs\/heads\/)/,'');
+      branch = branch.replace(/^(refs\/)/,'');
       queue_branch_removal(project, branch, data)
     }
   }
 });
 
 queue.process('remover', function (job, done){
-  console.log('REMOVER: Job', job.id, 'started');
+  console.log('REMOVER [', job.id, ']: Job started');
 
   // Pass repo name as environment variable for the namespace.
   process.env.NAMESPACE = job.data.project.toLowerCase().replace(/[^a-z0-9]/gi,'-');;
@@ -51,6 +53,8 @@ queue.process('remover', function (job, done){
   // Pass branch name as environment variable
   process.env.BRANCH_NAME = job.data.branch;
   
+  console.log('REMOVER [', job.id, ']: Branchname', job.data.branch);
+
   // Log on to cluster and remove helm deployment
   child_process.exec('/app/delete-deployment.sh', function (error, stdout, stderr) {
     console.log(stdout);

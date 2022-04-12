@@ -20,7 +20,7 @@ RUN curl -o /tmp/helm.tar.gz https://get.helm.sh/helm-${HELM_VERSION}-linux-amd6
   && mv /tmp/linux-amd64/helm /bin/helm
 
 # Copy node application
-COPY . /app
+COPY /app /app
 WORKDIR "/app"
 
 RUN npm install --production

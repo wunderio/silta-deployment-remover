@@ -1,6 +1,6 @@
 FROM node:10-alpine
 
-RUN apk add curl bash python jq
+RUN apk add curl bash python jq git
 
 # Add gcloud CLI
 RUN curl -sSL https://sdk.cloud.google.com | bash \
@@ -11,7 +11,7 @@ ENV PATH $PATH:/root/google-cloud-sdk/bin/
 RUN yes | gcloud components install kubectl
 
 # Install Helm
-ENV HELM_VERSION v3.0.2
+ENV HELM_VERSION v3.6.3
 
 RUN curl -o /tmp/helm.tar.gz https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz \
   && tar -zxvf /tmp/helm.tar.gz -C /tmp \

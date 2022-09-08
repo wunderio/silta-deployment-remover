@@ -28,6 +28,13 @@ github.on('delete', function (project, branch, data) {
   queue_branch_removal(project, branch, data)
 });
 
+// Webhook - repository created event
+github.on('repository', function (project, branch, data) {
+  if (data.action === "created" ){
+    console.log('REMOVER: Repository ' , project, ' created');
+  }
+});
+
 // Webhook - push event
 github.on('push', function (project, branch, data) {
   if (typeof data.deleted !== 'undefined' && typeof data.after !== 'undefined') {

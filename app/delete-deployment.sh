@@ -1,4 +1,8 @@
 remove_release () {
+  # Delete post-release job first
+  kubectl delete job -l "${RELEASE_NAME}-post-release" -n "$NAMESPACE"
+  echo "REMOVER: $NAMESPACE/$RELEASE_NAME post-release delete status: $?"
+
   # Remove deployment
   echo "REMOVER: Removing release $NAMESPACE/$RELEASE_NAME"
   helm delete -n "$NAMESPACE" "$RELEASE_NAME"

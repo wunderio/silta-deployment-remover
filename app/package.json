@@ -8,7 +8,7 @@
     "server": "node server.js"
   },
   "dependencies": {
-    "githubhook": "https://github.com/wunderio/node-github-hook",
+    "githubhook": "git+https://github.com/wunderio/node-github-hook.git",
     "kue": "^0.11.6"
   }
 }

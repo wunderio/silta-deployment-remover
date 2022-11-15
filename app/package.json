@@ -8,7 +8,11 @@
     "server": "node server.js"
   },
   "dependencies": {
+    "extend": "^2.0.2",
     "githubhook": "git+https://github.com/wunderio/node-github-hook.git",
-    "kue": "^0.11.6"
+    "kue": "^0.11.6",
+    "pug": "^3.0.2",
+    "redis": "^3.1.2",
+    "yargs-parser": "^5.0.1"
   }
 }

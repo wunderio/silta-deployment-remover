@@ -1,31 +1,27 @@
-FROM node:10-alpine
+FROM golang:1.19-alpine AS builder
+RUN apk update && apk add --no-cache git make bash
+WORKDIR $GOPATH/src/silta-deployment-remover
+COPY /app .
+RUN go mod download \
+  && CGO_ENABLED=0 GOOS=linux go build -a -gcflags=-trimpath=$(go env GOPATH) -asmflags=-trimpath=$(go env GOPATH) -ldflags '-extldflags "-static"' -o silta-deployment-remover
 
-RUN apk add curl bash python jq git
+FROM alpine:3.16
+RUN apk add --no-cache bash curl tini
 
-# Add gcloud CLI
-RUN curl -sSL https://sdk.cloud.google.com | bash \
-  && rm -r /root/google-cloud-sdk/.install/.backup/
-ENV PATH $PATH:/root/google-cloud-sdk/bin/
+# # kubectl for testing
+# RUN curl -L "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" -o /bin/kubectl \
+#   && chmod +x /bin/kubectl
 
-# Add kubectl
-RUN yes | gcloud components install kubectl
-
-# Install Helm
-ENV HELM_VERSION v3.6.3
-
-RUN curl -o /tmp/helm.tar.gz https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz \
-  && tar -zxvf /tmp/helm.tar.gz -C /tmp \
-  && rm /tmp/helm.tar.gz \
-  && find /tmp \
-  && mv /tmp/linux-amd64/helm /bin/helm
-
-# Copy node application
-COPY /app /app
+# Copy go application
+RUN mkdir /app
+COPY --from=builder /go/src/silta-deployment-remover /app
 WORKDIR "/app"
 
-RUN npm install --production
-
-EXPOSE 80
+EXPOSE 8080
 
 # Start application
-ENTRYPOINT ["npm","run-script","server"]
+ENTRYPOINT [ "/sbin/tini", "--"]
+CMD ["/bin/silta-deployment-remover"]
+
+# # Debugging
+# CMD ["sh", "-c", "tail -f /dev/null"]

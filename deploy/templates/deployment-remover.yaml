@@ -1,0 +1,44 @@
+{{- if .Values.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-deployment-remover
+spec:
+  type: NodePort
+  externalTrafficPolicy: Local
+  ports:
+    - name: web
+      port: 80
+      targetPort: 8080
+  selector:
+    name: {{ .Release.Name }}-deployment-remover
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-deployment-remover
+spec:
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels:
+      name: {{ .Release.Name }}-deployment-remover
+  template:
+    metadata:
+      labels:
+        name: {{ .Release.Name }}-deployment-remover
+    spec:
+      enableServiceLinks: false
+      serviceAccountName: {{ .Release.Name }}-deployment-remover
+      containers:
+      - name: {{ .Release.Name }}-deployment-remover
+        image: '{{ .Values.image }}:{{ .Values.imageTag }}'
+        ports:
+          - containerPort: 8080
+        imagePullPolicy: Always
+        env:
+          - name: WEBHOOKS_SECRET
+            value: {{ required "A valid .Values.webhooksSecret entry required!" .Values.webhooksSecret | quote }}
+        resources:
+          {{- .Values.resources | toYaml | nindent 10 }}
+{{- end }}

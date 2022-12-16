@@ -3,7 +3,6 @@ module github.com/wunderio/silta-deployment-remover
 go 1.19
 
 require (
-	github.com/go-playground/webhooks/v6 v6.0.1
 	github.com/mittwald/go-helm-client v0.11.5
 	k8s.io/apimachinery v0.25.4
 	k8s.io/client-go v0.25.2
@@ -133,5 +132,3 @@ require (
 	sigs.k8s.io/structured-merge-diff/v4 v4.2.3 // indirect
 	sigs.k8s.io/yaml v1.3.0 // indirect
 )
-
-replace github.com/go-playground/webhooks/v6 => github.com/wunderio/go-playground-webhooks/v6 v6.0.1-azure

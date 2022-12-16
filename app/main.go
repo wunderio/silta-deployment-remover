@@ -42,7 +42,7 @@ import (
 var (
 	webhooks_path   = "/webhooks"
 	webhooks_secret = os.Getenv("WEBHOOKS_SECRET")
-	debug           = true
+	debug           = false
 )
 
 var kubeconfig *string

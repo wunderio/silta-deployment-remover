@@ -1,13 +1,24 @@
 package main
 
 import (
-	"context"
+	"bytes"
+	"crypto/hmac"
+	"crypto/sha1"
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/hex"
 	"encoding/json"
 	"flag"
+	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
+
+	"context"
 
 	helmclient "github.com/mittwald/go-helm-client"
 
@@ -15,6 +26,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubernetes "k8s.io/client-go/kubernetes"
 	rest "k8s.io/client-go/rest"
+	"k8s.io/client-go/util/homedir"
 
 	// Uncomment to load all auth plugins
 	// _ "k8s.io/client-go/plugin/pkg/client/auth"
@@ -25,10 +37,6 @@ import (
 	// _ "k8s.io/client-go/plugin/pkg/client/auth/oidc"
 
 	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/client-go/util/homedir"
-
-	"github.com/go-playground/webhooks/v6/azuredevops"
-	"github.com/go-playground/webhooks/v6/github"
 )
 
 var (
@@ -40,8 +48,6 @@ var (
 var kubeconfig *string
 
 func removeRelease(namespace string, branchName string) {
-
-	log.Println("Namespace:", namespace)
 
 	if namespace == "" || branchName == "" {
 		log.Println("Namespace or branch name not found in request, exiting")
@@ -176,36 +182,214 @@ func removeRelease(namespace string, branchName string) {
 	}
 }
 
-func getBranchName(event any) (branch string) {
-	// print event
-	log.Printf("Event: %+v", event)
+func getBranchName(webhookData RequestData) (branch string) {
 
-	// // Github and GitLab event ref
-	// if event.Ref == "" {
-	// 	branch = event.Ref
-	// }
-	// // Azure event ref
-	// if event.Resource.RefUpdates[0].Name == "" {
-	// 	branch = event.Resource.RefUpdates[0].Name
-	// }
+	// Github and GitLab event ref
+	if webhookData.Ref != "" {
+		branch = webhookData.Ref
+	}
 
-	// var re, _ = regexp.Compile(`^(refs\/heads\/)`)
-	// branch = re.ReplaceAllString(branch, "")
+	// Azure event ref
+	if len(webhookData.Resource.RefUpdates) > 0 {
+		branch = webhookData.Resource.RefUpdates[0].Name
+	}
 
-	// re, _ = regexp.Compile(`^(refs\/)`)
-	// branch = re.ReplaceAllString(branch, "")
+	var re, _ = regexp.Compile(`^(refs\/heads\/)`)
+	branch = re.ReplaceAllString(branch, "")
+
+	re, _ = regexp.Compile(`^(refs\/)`)
+	branch = re.ReplaceAllString(branch, "")
 
 	return branch
 }
 
+func getEventType(req *http.Request, webhookData RequestData) (event string) {
+
+	// Github event type based on header
+	if req.Header.Get("x-github-event") != "" {
+		event = req.Header.Get("x-github-event")
+	}
+
+	// Github push event with branch deletion
+	if webhookData.Deleted && webhookData.After != "" {
+		// Special commit state for when the branch was removed
+		if (webhookData.Deleted) && (webhookData.After == "0000000000000000000000000000000000000000") {
+			// Thread release removal
+			event = "delete"
+		}
+	}
+
+	// Azure event ref
+	if req.Header.Get("x-vss-activityid") != "" {
+		if len(webhookData.Resource.RefUpdates) > 0 {
+			// Create event
+			if webhookData.Resource.RefUpdates[0].OldObjectId == "0000000000000000000000000000000000000000" {
+				event = "create"
+			}
+			// Delete event
+			if webhookData.Resource.RefUpdates[0].NewObjectId == "0000000000000000000000000000000000000000" {
+				event = "delete"
+			}
+		}
+	}
+
+	return event
+}
+
+func getRepositoryName(webhookData RequestData) (repository string) {
+
+	// Github and GitLab event repository name
+	if webhookData.Repository.Name != "" {
+		repository = webhookData.Repository.Name
+	}
+
+	// Azure event repository name
+	if webhookData.Resource.Repository.Name != "" {
+		repository = webhookData.Resource.Repository.Name
+	}
+
+	return repository
+}
+
+func isValidSignature(req *http.Request, key string) bool {
+
+	var body []byte
+
+	// Assuming a non-empty header
+	gotHash := strings.SplitN(req.Header.Get("X-Hub-Signature"), "=", 2)
+	if gotHash[0] != "sha1" {
+		return false
+	}
+	defer req.Body.Close()
+
+	body, err := ioutil.ReadAll(req.Body)
+	if err != nil {
+		log.Printf("Cannot read the request body: %s\n", err)
+		return false
+	}
+
+	req.Body = ioutil.NopCloser(bytes.NewBuffer(body))
+
+	hash := hmac.New(sha1.New, []byte(key))
+	if _, err := hash.Write(body); err != nil {
+		log.Printf("Cannot compute the HMAC for request: %s\n", err)
+		return false
+	}
+
+	// TODO: signature256
+
+	expectedHash := hex.EncodeToString(hash.Sum(nil))
+
+	// Allow invalid signatures in debug mode
+	if debug {
+		log.Println("Debug mode, allowing invalid signature")
+		log.Println("EXPECTED HASH:", expectedHash)
+		log.Println("GOT HASH:     ", gotHash[1])
+		return true
+	}
+
+	return gotHash[1] == expectedHash
+}
+
+func handleWebhook(w http.ResponseWriter, req *http.Request) {
+
+	log.Println("Received webhook request ...")
+	w.Header().Set("Content-Type", "application/json")
+
+	signature := req.Header.Get("x-hub-signature")
+	signature256 := req.Header.Get("x-hub-signature-256")
+
+	// Validate Github signature
+	if signature != "" || signature256 != "" {
+		log.Println("Processing github request")
+
+		// Check signature
+		if isValidSignature(req, webhooks_secret) {
+			fmt.Println("Github signature is valid")
+		} else {
+			fmt.Println("Github signature is invalid. You might need to switch deliveries to application/json.")
+			return
+		}
+	} else {
+		// Fall back to basic auth and validate it
+		// Azure DevOps provides this
+		_, password, ok := req.BasicAuth()
+		if ok {
+			// Calculate SHA-256 hashes for the provided and expected
+			passwordHash := sha256.Sum256([]byte(password))
+			expectedPasswordHash := sha256.Sum256([]byte(webhooks_secret))
+			passwordMatch := (subtle.ConstantTimeCompare(passwordHash[:], expectedPasswordHash[:]) == 1)
+			// Compare hashes
+			if passwordMatch {
+				fmt.Println("Basic authentication is valid")
+			} else {
+				fmt.Println("Basic authentication is invalid")
+				return
+			}
+		} else {
+			fmt.Println("Authentication is invalid")
+			if debug {
+				log.Println("Debug mode, skipping authentication validation")
+			} else {
+				return
+			}
+		}
+	}
+
+	// Decode request body
+	var body []byte
+	defer req.Body.Close()
+
+	// Read request body
+	body, err := ioutil.ReadAll(req.Body)
+	if err != nil {
+		log.Printf("Failed to read request body: %s", err)
+		return
+	}
+
+	// Replace body with original body
+	req.Body = ioutil.NopCloser(bytes.NewBuffer(body))
+
+	// Marshal request body
+	var webhookData RequestData
+	err = json.Unmarshal(body, &webhookData)
+	if err != nil {
+		log.Printf("Failed to parse request body: %s", err)
+	}
+
+	var repository = getRepositoryName(webhookData)
+	var branch = getBranchName(webhookData)
+	var event = getEventType(req, webhookData)
+
+	fmt.Printf("Event: %s, Repository: %s, Branch: %s \n", event, repository, branch)
+
+	// Respond to ping event
+	if event == "ping" {
+		// Respond with pong
+		resp := map[string]string{"message": "pong", "result": "ok"}
+		err = json.NewEncoder(w).Encode(resp)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+		}
+		return
+	}
+
+	// Remove release when delete event is received
+	if event == "delete" {
+		// Thread release removal
+		go removeRelease(repository, branch)
+	}
+
+	// Always return 200
+	resp := map[string]string{"message": "ok", "result": "ok"}
+	err = json.NewEncoder(w).Encode(resp)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+	}
+
+}
+
 func main() {
-
-	// TODO: Require webhook secret
-	// if webhooks_secret == "" {
-	// 	log.Println("Error: WEBHOOKS_SECRET is required")
-	// 	os.Exit(1)
-	// }
-
 	// Try reading kubeconfig
 	if home := homedir.HomeDir(); home != "" {
 		kubeconfig = flag.String("kubeconfig", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
@@ -215,144 +399,6 @@ func main() {
 	flag.Parse()
 
 	log.Println("Starting webhook listener")
-
-	// Start listener webhook
-	githubhook, _ := github.New(github.Options.Secret(webhooks_secret))
-	azurehook, _ := azuredevops.New()
-
-	// Github webhook handler
-	http.HandleFunc(webhooks_path, func(w http.ResponseWriter, r *http.Request) {
-		log.Println("Received webhook request ...")
-
-		w.Header().Set("Content-Type", "application/json")
-
-		payload, err := githubhook.Parse(r, github.CreateEvent, github.DeleteEvent, github.PushEvent)
-		if err != nil {
-			if err == github.ErrEventNotFound {
-				// ok event wasn't one of the ones asked to be parsed
-				log.Printf("Unknown event: %s", err)
-			}
-		}
-
-		switch payload.(type) {
-
-		// TODO: Webhook - repository created event (do nothing)
-		// CreateEvent ?
-		// RepositoryEvent ?
-		// case github.CreatePayload:
-		// 	event := payload.(github.CreatePayload)
-		// 	// Do whatever you want from here...
-		// 	fmt.Printf("%+v", event)
-
-		// TODO: Webhook - delete event
-		case github.DeletePayload:
-			event := payload.(github.DeletePayload)
-
-			var repository = event.Repository.Name
-			var branch = getBranchName(event)
-
-			// Thread release removal
-			go removeRelease(repository, branch)
-
-			resp := map[string]string{"message": "ok", "result": "ok"}
-			err := json.NewEncoder(w).Encode(resp)
-			if err != nil {
-				http.Error(w, err.Error(), 500)
-			}
-
-		// Webhook - push event (https://developer.github.com/webhooks/#events)
-		case github.PushPayload:
-			event := payload.(github.PushPayload)
-
-			var repository = event.Repository.Name
-			var branch = getBranchName(event)
-
-			if event.Deleted && event.After != "" {
-				// Special commit state for when the branch was removed
-				if (event.Deleted) && (event.After == "0000000000000000000000000000000000000000") {
-					// Thread release removal
-					go removeRelease(repository, branch)
-				}
-			}
-
-			resp := map[string]string{"message": "ok", "result": "ok"}
-			err := json.NewEncoder(w).Encode(resp)
-			if err != nil {
-				http.Error(w, err.Error(), 500)
-			}
-
-		default:
-			log.Println("Unknown payload")
-
-		}
-	})
-
-	// Azure DevOps handler
-	http.HandleFunc(webhooks_path, func(w http.ResponseWriter, r *http.Request) {
-		log.Println("Received webhook request ...")
-
-		w.Header().Set("Content-Type", "application/json")
-
-		// payload, err := azurehook.Parse(r, azuredevops.GitPullRequestCreatedEventType)
-		// if err != nil {
-		// 	if err == azuredevops.ErrParsingPayload {
-		// 		log.Printf("Error parsing payload: %s", err)
-		// 	}
-		// }
-
-		// fmt.Printf("%+v", payload)
-
-		// switch payload.(type) {
-
-		// // TODO: Webhook - repository created event (do nothing)
-		// // CreateEvent ?
-		// // RepositoryEvent ?
-		// // case github.CreatePayload:
-		// // 	event := payload.(github.CreatePayload)
-		// // 	// Do whatever you want from here...
-		// // 	fmt.Printf("%+v", event)
-
-		// // TODO: Webhook - delete event
-		// case github.DeletePayload:
-		// 	event := payload.(github.DeletePayload)
-
-		// 	var repository = event.Repository.Name
-		// 	var branch = getBranchName(event)
-
-		// 	// Thread release removal
-		// 	go removeRelease(repository, branch)
-
-		// 	resp := map[string]string{"message": "ok", "result": "ok"}
-		// 	err := json.NewEncoder(w).Encode(resp)
-		// 	if err != nil {
-		// 		http.Error(w, err.Error(), 500)
-		// 	}
-
-		// // Webhook - push event (https://developer.github.com/webhooks/#events)
-		// case github.PushPayload:
-		// 	event := payload.(github.PushPayload)
-
-		// 	var repository = event.Repository.Name
-		// 	var branch = getBranchName(event)
-
-		// 	if event.Deleted && event.After != "" {
-		// 		// Special commit state for when the branch was removed
-		// 		if (event.Deleted) && (event.After == "0000000000000000000000000000000000000000") {
-		// 			// Thread release removal
-		// 			go removeRelease(repository, branch)
-		// 		}
-		// 	}
-
-		// 	resp := map[string]string{"message": "ok", "result": "ok"}
-		// 	err := json.NewEncoder(w).Encode(resp)
-		// 	if err != nil {
-		// 		http.Error(w, err.Error(), 500)
-		// 	}
-
-		// default:
-		// 	log.Println("Unknown payload")
-
-		// }
-	})
-	http.ListenAndServe(":8080", nil)
+	http.HandleFunc(webhooks_path, handleWebhook)
+	log.Fatal(http.ListenAndServe(":8080", nil))
 }

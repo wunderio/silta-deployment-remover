@@ -8,20 +8,11 @@ RUN go mod download \
 FROM alpine:3.16
 RUN apk add --no-cache bash curl tini
 
-# # kubectl for testing
-# RUN curl -L "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" -o /bin/kubectl \
-#   && chmod +x /bin/kubectl
-
 # Copy go application
-RUN mkdir /app
-COPY --from=builder /go/src/silta-deployment-remover /app
-WORKDIR "/app"
+COPY --from=builder /go/src/silta-deployment-remover /bin
 
 EXPOSE 8080
 
 # Start application
 ENTRYPOINT [ "/sbin/tini", "--"]
 CMD ["/bin/silta-deployment-remover"]
-
-# # Debugging
-# CMD ["sh", "-c", "tail -f /dev/null"]

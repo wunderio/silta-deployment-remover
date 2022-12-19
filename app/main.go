@@ -42,10 +42,18 @@ import (
 var (
 	webhooks_path   = "/webhooks"
 	webhooks_secret = os.Getenv("WEBHOOKS_SECRET")
-	debug           = false
+	debug           = debugEnabled()
 )
 
 var kubeconfig *string
+
+func debugEnabled() bool {
+	value, ok := os.LookupEnv("DEBUG")
+	if ok {
+		return value == "true"
+	}
+	return false
+}
 
 func removeRelease(namespace string, branchName string) {
 
@@ -398,6 +406,9 @@ func main() {
 	}
 	flag.Parse()
 
+	if debug {
+		log.Println("Debug mode enabled")
+	}
 	log.Println("Starting webhook listener")
 	http.HandleFunc(webhooks_path, handleWebhook)
 	log.Fatal(http.ListenAndServe(":8080", nil))

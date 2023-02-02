@@ -1,0 +1,20 @@
+enabled: true
+replicas: 1
+image: wunderio/silta-deployment-remover
+imageTag: v0.2
+# Github webhooks secret
+webhooksSecret: ''
+# Kubernetes resource allocation.
+resources: {}
+
+ssl:
+  enabled: true
+  email: admin@example.com
+  # Available issuers: letsencrypt-staging, letsencrypt, selfsigned, custom
+  issuer: letsencrypt
+  # Used when certificate issuer is "custom"
+  # ca: ""
+  # key: ""
+  # crt: ""
+
+clusterDomain: remover.dev.wdr.io

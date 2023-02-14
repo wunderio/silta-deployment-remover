@@ -146,7 +146,8 @@ func removeRelease(namespace string, branchName string) {
 				}
 			} else {
 				// Actually delete job
-				deleteErr := clientset.BatchV1().Jobs(namespace).Delete(context.TODO(), releaseName+"-post-release", metav1.DeleteOptions{})
+				propagationPolicy := metav1.DeletePropagationBackground
+				deleteErr := clientset.BatchV1().Jobs(namespace).Delete(context.TODO(), releaseName+"-post-release", metav1.DeleteOptions{PropagationPolicy: &propagationPolicy})
 				if deleteErr != nil {
 					if errs.IsNotFound(deleteErr) {
 						//Resource doesnt exist, skip printing a message

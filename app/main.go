@@ -157,10 +157,31 @@ func removeRelease(namespace string, branchName string) {
 				}
 			}
 
-			// Find PVC's by release name label
 			PVC_client := clientset.CoreV1().PersistentVolumeClaims(namespace)
+
+			// Find PVC's by release name label
 			list, err := PVC_client.List(context.TODO(), metav1.ListOptions{
 				LabelSelector: "release=" + releaseName,
+			})
+			if err != nil {
+				log.Fatalf("Error getting the list of PVCs: %s", err)
+			}
+
+			// Iterate pvc's
+			for _, v := range list.Items {
+				log.Printf("PVC name: %s", v.Name)
+				if debug {
+					log.Println("  Debug mode, not removing PVC")
+				} else {
+					// Delete PVC's
+					PVC_client.Delete(context.TODO(), v.Name, metav1.DeleteOptions{})
+					log.Println("  PVC deleted:", v.Name)
+				}
+			}
+
+			// Find PVC's by app.kubernetes.io/instance label
+			list, err = PVC_client.List(context.TODO(), metav1.ListOptions{
+				LabelSelector: "app.kubernetes.io/instance=" + releaseName,
 			})
 			if err != nil {
 				log.Fatalf("Error getting the list of PVCs: %s", err)

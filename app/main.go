@@ -160,6 +160,7 @@ func removeRelease(namespace string, branchName string) {
 			PVC_client := clientset.CoreV1().PersistentVolumeClaims(namespace)
 
 			selectorLabels := []string{
+				"app",
 				"release",
 				"app.kubernetes.io/instance",
 			}
@@ -167,8 +168,14 @@ func removeRelease(namespace string, branchName string) {
 			for _, l := range selectorLabels {
 
 				// Find PVC's by release name label
+
+				selector := l + "=" + releaseName
+				if l == "app" {
+					selector = l + "=" + releaseName + "-es"
+				}
+
 				list, err := PVC_client.List(context.TODO(), metav1.ListOptions{
-					LabelSelector: l + "=" + releaseName,
+					LabelSelector: selector,
 				})
 				if err != nil {
 					log.Fatalf("Error getting the list of PVCs: %s", err)

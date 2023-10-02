@@ -35,3 +35,18 @@ Compatibility:
 2. Application permissions & webhooks section, add `Repository contents` r/o permission and check `Delete (Branch or tag deleted.)` option in `Subscribe to events` section.
 
 3. Enable this application in your organisation (`https://github.com/organizations/<org name>/settings/apps/<app name>/installations`). URL address is `<host>/webhooks` (port 80)
+
+# Docker image build
+
+**Automated builds:**
+
+Tag a new release in github, docker hub integration will build and publish the images automatically.
+
+**Manual builds (only when automated builds are not working):**
+
+```bash
+docker build --tag 'wunderio/silta-deployment-remover:latest' --tag 'wunderio/silta-deployment-remover:v1' --tag 'wunderio/silta-deployment-remover:v1.X' --tag 'wunderio/silta-deployment-remover:v1.X.Y' .
+docker push wunderio/silta-deployment-remover:v1
+docker push wunderio/silta-deployment-remover:v1.X
+docker push wunderio/silta-deployment-remover:v1.X.Y
+```

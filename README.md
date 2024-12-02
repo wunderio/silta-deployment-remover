@@ -46,6 +46,7 @@ Tag a new release in github, docker hub integration will build and publish the i
 
 ```bash
 docker build --tag 'wunderio/silta-deployment-remover:latest' --tag 'wunderio/silta-deployment-remover:v1' --tag 'wunderio/silta-deployment-remover:v1.X' --tag 'wunderio/silta-deployment-remover:v1.X.Y' .
+docker push wunderio/silta-deployment-remover:latest
 docker push wunderio/silta-deployment-remover:v1
 docker push wunderio/silta-deployment-remover:v1.X
 docker push wunderio/silta-deployment-remover:v1.X.Y

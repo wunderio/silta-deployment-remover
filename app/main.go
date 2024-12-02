@@ -9,7 +9,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"flag"
-	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -17,6 +16,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"context"
 
@@ -57,10 +57,17 @@ func debugEnabled() bool {
 
 func removeRelease(namespace string, branchName string) {
 
+	log.Printf("[%s/%s] Waiting for 15 minutes to make sure builds are finished\n", namespace, branchName)
+
+	// Sleep for 15 minutes to make sure builds in progress are finished
+	time.Sleep(15 * time.Minute)
+
 	if namespace == "" || branchName == "" {
-		log.Println("Namespace or branch name not found in request, exiting")
+		log.Printf("[%s/%s] Namespace or branch name not found in request, exiting\n", namespace, branchName)
 		return
 	}
+
+	log.Printf("[%s/%s] Removing release\n", namespace, branchName)
 
 	// Use the current context in kubeconfig
 	config, err := clientcmd.BuildConfigFromFlags("", *kubeconfig)
@@ -71,14 +78,14 @@ func removeRelease(namespace string, branchName string) {
 		config, err = rest.InClusterConfig()
 		if err != nil {
 			// Still fails, might as well trigger panic() to fail pod
-			log.Println("Error loading kubernetes cluster configuration:", err)
+			log.Printf("[%s/%s] Error loading kubernetes cluster configuration: %s\n", namespace, branchName, err)
 		}
 	}
 
 	// create the clientset
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		log.Println("Error creating clientset:", err)
+		log.Printf("[%s/%s] Error creating clientset: %s\n", namespace, branchName, err)
 	}
 
 	// Get pods to verify kube connection
@@ -102,108 +109,117 @@ func removeRelease(namespace string, branchName string) {
 
 	helmClient, err := helmclient.NewClientFromRestConf(opt)
 	if err != nil {
-		log.Printf("Kubernetes connection failure: %s", err)
+		log.Printf("[%s/%s] Kubernetes connection failure: %s\n", namespace, branchName, err)
 	}
 	_ = helmClient
 
 	// Find kubernetes configmap by name
 	// TODO: Change silta-release subchart, add special label or annotation to silta-release configmaps
-	cm, err := clientset.CoreV1().ConfigMaps(namespace).List(context.TODO(), metav1.ListOptions{})
+	cms, err := clientset.CoreV1().ConfigMaps(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
-		log.Println("Error loading configmaps:", err)
+		log.Printf("[%s/%s] Error loading configmaps: %s", namespace, branchName, err)
 	}
 
 	var releasesFound = 0
+	releaseList := []string{}
 
 	// Iterate cm.Items
-	for _, cm := range cm.Items {
-		if cm.Data["branchName"] == branchName {
+	for _, cm := range cms.Items {
+
+		// Do a case-insensitive comparison
+		if branchName != "" && strings.ToLower(cm.Data["branchName"]) == strings.ToLower(branchName) {
 
 			releasesFound++
 			releaseName := cm.Labels["release"]
+			releaseList = append(releaseList, releaseName)
 
-			log.Println("Found silta-release configmap for branchName:", branchName)
-			log.Println("Release name:", cm.Labels["release"])
-
-			// Delete helm release
-			if debug {
-				log.Println("Debug mode, not removing release")
-			} else {
-				uninstallErr := helmClient.UninstallReleaseByName(cm.Labels["release"])
-				if uninstallErr != nil {
-					log.Fatalf("Error removing a release:%s", uninstallErr)
-				}
-			}
-
-			// Remove post-install job
-			if debug {
-				// List jobs
-				postrelease, err := clientset.BatchV1().Jobs(namespace).List(context.TODO(), metav1.ListOptions{LabelSelector: "release=" + releaseName})
-				if err != nil {
-					log.Printf("Error listing post-release job: %s", err)
-				} else {
-					log.Printf("There are %d jobs with label %s in the namespace", len(postrelease.Items), "release="+releaseName)
-				}
-			} else {
-				// Actually delete job
-				propagationPolicy := metav1.DeletePropagationBackground
-				deleteErr := clientset.BatchV1().Jobs(namespace).Delete(context.TODO(), releaseName+"-post-release", metav1.DeleteOptions{PropagationPolicy: &propagationPolicy})
-				if deleteErr != nil {
-					if errs.IsNotFound(deleteErr) {
-						//Resource doesnt exist, skip printing a message
-					} else {
-						log.Printf("Cannot delete post-release job: %s", deleteErr)
-					}
-				}
-			}
-
-			PVC_client := clientset.CoreV1().PersistentVolumeClaims(namespace)
-
-			selectorLabels := []string{
-				"app",
-				"release",
-				"app.kubernetes.io/instance",
-			}
-
-			for _, l := range selectorLabels {
-
-				// Find PVC's by release name label
-
-				selector := l + "=" + releaseName
-				if l == "app" {
-					selector = l + "=" + releaseName + "-es"
-				}
-
-				list, err := PVC_client.List(context.TODO(), metav1.ListOptions{
-					LabelSelector: selector,
-				})
-				if err != nil {
-					log.Fatalf("Error getting the list of PVCs: %s", err)
-				}
-
-				// Iterate pvc's
-				for _, v := range list.Items {
-					log.Printf("PVC name: %s", v.Name)
-					if debug {
-						log.Println("  Debug mode, not removing PVC")
-					} else {
-						// Delete PVC's
-						PVC_client.Delete(context.TODO(), v.Name, metav1.DeleteOptions{})
-						log.Println("  PVC deleted:", v.Name)
-					}
-				}
-			}
-
-			if debug {
-				log.Printf("Debug mode, not removing release %s/%s", namespace, releaseName)
-			} else {
-				log.Printf("Release %s/%s removed", namespace, releaseName)
-			}
+			log.Printf("[%s/%s] Found release [%d] %s\n", namespace, branchName, releasesFound, releaseName)
 		}
 	}
 
 	if releasesFound == 0 {
-		log.Printf("No releases found for branch %s", branchName)
+		log.Printf("[%s/%s] No releases found for branch name %s\n", namespace, branchName, branchName)
+	}
+
+	// Remove releases
+	for n, releaseName := range releaseList {
+
+		log.Printf("[%s/%s] Removing release %s [%d of %d]\n", namespace, branchName, releaseName, (n + 1), len(releaseList))
+
+		// Delete helm release
+		if debug {
+			log.Printf("[%s/%s] Debug mode, not removing release\n", namespace, branchName)
+		} else {
+			uninstallErr := helmClient.UninstallReleaseByName(releaseName)
+			if uninstallErr != nil {
+				log.Printf("[%s/%s] Error removing a release: %s\n", namespace, branchName, uninstallErr)
+			}
+		}
+
+		// Remove post-install job
+		if debug {
+			// List jobs
+			postrelease, err := clientset.BatchV1().Jobs(namespace).List(context.TODO(), metav1.ListOptions{LabelSelector: "release=" + releaseName})
+			if err != nil {
+				log.Printf("[%s/%s] Error listing post-release job: %s\n", namespace, branchName, err)
+			} else {
+				log.Printf("[%s/%s] There are %d jobs with label %s in the namespace\n", namespace, branchName, len(postrelease.Items), "release="+releaseName)
+			}
+		} else {
+			// Actually delete job
+			propagationPolicy := metav1.DeletePropagationBackground
+			deleteErr := clientset.BatchV1().Jobs(namespace).Delete(context.TODO(), releaseName+"-post-release", metav1.DeleteOptions{PropagationPolicy: &propagationPolicy})
+			if deleteErr != nil {
+				if errs.IsNotFound(deleteErr) {
+					//Resource doesnt exist, skip printing a message
+				} else {
+					log.Printf("[%s/%s] Cannot delete post-release job: %s\n", namespace, branchName, deleteErr)
+				}
+			}
+		}
+
+		PVC_client := clientset.CoreV1().PersistentVolumeClaims(namespace)
+
+		selectorLabels := []string{
+			"app",
+			"release",
+			"app.kubernetes.io/instance",
+		}
+
+		for _, l := range selectorLabels {
+
+			// Find PVC's by release name label
+
+			selector := l + "=" + releaseName
+			if l == "app" {
+				selector = l + "=" + releaseName + "-es"
+			}
+
+			list, err := PVC_client.List(context.TODO(), metav1.ListOptions{
+				LabelSelector: selector,
+			})
+			if err != nil {
+				log.Printf("[%s/%s] Error getting the list of PVCs: %s\n", namespace, branchName, err)
+			} else {
+				// Iterate pvc's
+				for _, v := range list.Items {
+					log.Printf("[%s/%s] PVC name: %s\n", namespace, branchName, v.Name)
+					if debug {
+						log.Printf("[%s/%s]  Debug mode, not removing PVC %s\n", namespace, branchName, v.Name)
+					} else {
+						// Delete PVC's
+						PVC_client.Delete(context.TODO(), v.Name, metav1.DeleteOptions{})
+						log.Printf("[%s/%s]  PVC deleted: %s\n", namespace, branchName, v.Name)
+					}
+				}
+			}
+		}
+
+		if debug {
+			log.Printf("[%s/%s] Debug mode, not removing release %s/%s", namespace, branchName, namespace, releaseName)
+		} else {
+			log.Printf("[%s/%s] Release %s/%s removed", namespace, branchName, namespace, releaseName)
+		}
 	}
 }
 
@@ -257,6 +273,9 @@ func getEventType(req *http.Request, webhookData RequestData) (event string) {
 			}
 		}
 	}
+
+	// convert event name to lowercase
+	event = strings.ToLower(event)
 
 	return event
 }
@@ -318,6 +337,12 @@ func isValidSignature(req *http.Request, key string) bool {
 
 func handleWebhook(w http.ResponseWriter, req *http.Request) {
 
+	// Only allow POST requests
+	if req.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
 	log.Println("Received webhook request ...")
 	w.Header().Set("Content-Type", "application/json")
 
@@ -330,9 +355,9 @@ func handleWebhook(w http.ResponseWriter, req *http.Request) {
 
 		// Check signature
 		if isValidSignature(req, webhooks_secret) {
-			fmt.Println("Github signature is valid")
+			log.Println("Github signature is valid")
 		} else {
-			fmt.Println("Github signature is invalid. You might need to switch deliveries to application/json.")
+			log.Println("Github signature is invalid. You might need to switch deliveries to application/json.")
 			return
 		}
 	} else {
@@ -346,13 +371,13 @@ func handleWebhook(w http.ResponseWriter, req *http.Request) {
 			passwordMatch := (subtle.ConstantTimeCompare(passwordHash[:], expectedPasswordHash[:]) == 1)
 			// Compare hashes
 			if passwordMatch {
-				fmt.Println("Basic authentication is valid")
+				log.Println("Basic authentication is valid")
 			} else {
-				fmt.Println("Basic authentication is invalid")
+				log.Println("Basic authentication is invalid")
 				return
 			}
 		} else {
-			fmt.Println("Authentication is invalid")
+			log.Println("Authentication is invalid")
 			if debug {
 				log.Println("Debug mode, skipping authentication validation")
 			} else {
@@ -386,7 +411,7 @@ func handleWebhook(w http.ResponseWriter, req *http.Request) {
 	var branch = getBranchName(webhookData)
 	var event = getEventType(req, webhookData)
 
-	fmt.Printf("Event: %s, Repository: %s, Branch: %s \n", event, repository, branch)
+	log.Printf("[%s/%s] Event: %s, Repository: %s, Branch: %s \n", repository, branch, event, repository, branch)
 
 	// Respond to ping event
 	if event == "ping" {

@@ -57,7 +57,7 @@ func debugEnabled() bool {
 
 func removeRelease(namespace string, branchName string) {
 
-	log.Printf("[%s/%s] Waiting for 15 minutes to make sure builds are finished\n", namespace, branchName)
+	log.Printf("[%s/%s] Waiting 15 minutes before removal to make sure builds are finished\n", namespace, branchName)
 
 	// Sleep for 15 minutes to make sure builds in progress are finished
 	time.Sleep(15 * time.Minute)

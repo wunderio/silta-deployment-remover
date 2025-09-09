@@ -8,6 +8,7 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"flag"
 	"io/ioutil"
 	"log"
@@ -20,12 +21,11 @@ import (
 
 	"context"
 
-	helmclient "github.com/mittwald/go-helm-client"
-
-	errs "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubernetes "k8s.io/client-go/kubernetes"
 	rest "k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
 
 	// Uncomment to load all auth plugins
@@ -36,7 +36,8 @@ import (
 	// _ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 	// _ "k8s.io/client-go/plugin/pkg/client/auth/oidc"
 
-	"k8s.io/client-go/tools/clientcmd"
+	helmAction "helm.sh/helm/v3/pkg/action"
+	helmCli "helm.sh/helm/v3/pkg/cli"
 )
 
 var (
@@ -69,49 +70,20 @@ func removeRelease(namespace string, branchName string) {
 
 	log.Printf("[%s/%s] Removing release\n", namespace, branchName)
 
-	// Use the current context in kubeconfig
-	config, err := clientcmd.BuildConfigFromFlags("", *kubeconfig)
+	clientset, err := GetKubeClient()
 	if err != nil {
-		// Fall back to in-cluster config
-		// use token at /var/run/secrets/kubernetes.io/serviceaccount/token
-		// KUBERNETES_SERVICE_HOST and KUBERNETES_SERVICE_PORT must be defined
-		config, err = rest.InClusterConfig()
-		if err != nil {
-			// Still fails, might as well trigger panic() to fail pod
-			log.Printf("[%s/%s] Error loading kubernetes cluster configuration: %s\n", namespace, branchName, err)
-		}
+		log.Printf("[%s/%s] Error creating kubernetes clientset: %s\n", namespace, branchName, err)
+		return
 	}
 
-	// create the clientset
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		log.Printf("[%s/%s] Error creating clientset: %s\n", namespace, branchName, err)
-	}
+	settings := helmCli.New()
+	settings.SetNamespace(namespace) // Ensure Helm uses the correct namespace
 
-	// Get pods to verify kube connection
-	// pods, err := clientset.CoreV1().Pods(namespace).List(context.TODO(), metav1.ListOptions{})
-	// if err != nil {
-	// 	log.Println("Error listing pods:", err)
-	// }
-	// log.Printf("There are %d pods in the namespace\n", len(pods.Items))
-
-	// Use helm via rest config
-	opt := &helmclient.RestConfClientOptions{
-		Options: &helmclient.Options{
-			Namespace:        namespace,
-			RepositoryCache:  "/tmp/.helmcache",
-			RepositoryConfig: "/tmp/.helmrepo",
-			Debug:            false,
-			Linting:          true,
-		},
-		RestConfig: config,
+	actionConfig := new(helmAction.Configuration)
+	if err := actionConfig.Init(settings.RESTClientGetter(), namespace, os.Getenv("HELM_DRIVER"), log.Printf); err != nil {
+		log.Printf("[%s/%s] Helm init failure: %s\n", namespace, branchName, err)
+		os.Exit(1)
 	}
-
-	helmClient, err := helmclient.NewClientFromRestConf(opt)
-	if err != nil {
-		log.Printf("[%s/%s] Kubernetes connection failure: %s\n", namespace, branchName, err)
-	}
-	_ = helmClient
 
 	// Find kubernetes configmap by name
 	// TODO: Change silta-release subchart, add special label or annotation to silta-release configmaps
@@ -150,75 +122,13 @@ func removeRelease(namespace string, branchName string) {
 		if debug {
 			log.Printf("[%s/%s] Debug mode, not removing release\n", namespace, branchName)
 		} else {
-			uninstallErr := helmClient.UninstallReleaseByName(releaseName)
+
+			uninstallErr := UninstallHelmRelease(clientset, actionConfig, namespace, releaseName, true)
 			if uninstallErr != nil {
 				log.Printf("[%s/%s] Error removing a release: %s\n", namespace, branchName, uninstallErr)
-			}
-		}
-
-		// Remove post-install job
-		if debug {
-			// List jobs
-			postrelease, err := clientset.BatchV1().Jobs(namespace).List(context.TODO(), metav1.ListOptions{LabelSelector: "release=" + releaseName})
-			if err != nil {
-				log.Printf("[%s/%s] Error listing post-release job: %s\n", namespace, branchName, err)
 			} else {
-				log.Printf("[%s/%s] There are %d jobs with label %s in the namespace\n", namespace, branchName, len(postrelease.Items), "release="+releaseName)
+				log.Printf("[%s/%s] Release %s/%s removed", namespace, branchName, namespace, releaseName)
 			}
-		} else {
-			// Actually delete job
-			propagationPolicy := metav1.DeletePropagationBackground
-			deleteErr := clientset.BatchV1().Jobs(namespace).Delete(context.TODO(), releaseName+"-post-release", metav1.DeleteOptions{PropagationPolicy: &propagationPolicy})
-			if deleteErr != nil {
-				if errs.IsNotFound(deleteErr) {
-					//Resource doesnt exist, skip printing a message
-				} else {
-					log.Printf("[%s/%s] Cannot delete post-release job: %s\n", namespace, branchName, deleteErr)
-				}
-			}
-		}
-
-		PVC_client := clientset.CoreV1().PersistentVolumeClaims(namespace)
-
-		selectorLabels := []string{
-			"app",
-			"release",
-			"app.kubernetes.io/instance",
-		}
-
-		for _, l := range selectorLabels {
-
-			// Find PVC's by release name label
-
-			selector := l + "=" + releaseName
-			if l == "app" {
-				selector = l + "=" + releaseName + "-es"
-			}
-
-			list, err := PVC_client.List(context.TODO(), metav1.ListOptions{
-				LabelSelector: selector,
-			})
-			if err != nil {
-				log.Printf("[%s/%s] Error getting the list of PVCs: %s\n", namespace, branchName, err)
-			} else {
-				// Iterate pvc's
-				for _, v := range list.Items {
-					log.Printf("[%s/%s] PVC name: %s\n", namespace, branchName, v.Name)
-					if debug {
-						log.Printf("[%s/%s]  Debug mode, not removing PVC %s\n", namespace, branchName, v.Name)
-					} else {
-						// Delete PVC's
-						PVC_client.Delete(context.TODO(), v.Name, metav1.DeleteOptions{})
-						log.Printf("[%s/%s]  PVC deleted: %s\n", namespace, branchName, v.Name)
-					}
-				}
-			}
-		}
-
-		if debug {
-			log.Printf("[%s/%s] Debug mode, not removing release %s/%s", namespace, branchName, namespace, releaseName)
-		} else {
-			log.Printf("[%s/%s] Release %s/%s removed", namespace, branchName, namespace, releaseName)
 		}
 	}
 }
@@ -454,4 +364,100 @@ func main() {
 	log.Println("Starting webhook listener")
 	http.HandleFunc(webhooks_path, handleWebhook)
 	log.Fatal(http.ListenAndServe(":8080", nil))
+}
+
+// TODO: import silta-cli common function when released. This is a 1:1 copy of internal/common/kube
+func GetKubeClient() (*kubernetes.Clientset, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return nil, errors.New("cannot read user home dir")
+	}
+	kubeConfigPath := homeDir + "/.kube/config"
+
+	config, err := clientcmd.BuildConfigFromFlags("", kubeConfigPath)
+	if err != nil {
+		// Fall back to in-cluster config
+		// use token at /var/run/secrets/kubernetes.io/serviceaccount/token
+		// KUBERNETES_SERVICE_HOST and KUBERNETES_SERVICE_PORT must be defined
+		config, err = rest.InClusterConfig()
+		if err != nil {
+			// Still fails, might as well trigger panic() to fail pod
+			return nil, err
+		}
+	}
+
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return nil, err
+	}
+	return clientset, nil
+}
+
+// TODO: import silta-cli common function when released. This is a 1:1 copy of internal/common/ciReleaseFunctions
+// UninstallRelease removes a Helm release and related resources
+func UninstallHelmRelease(kubernetesClient *kubernetes.Clientset, helmClient *helmAction.Configuration, namespace string, releaseName string, deletePVCs bool) error {
+
+	// Do not bail when release removal fails, remove related resources anyway.
+	log.Printf("Removing release: %s", releaseName)
+	uninstall := helmAction.NewUninstall(helmClient)
+	uninstall.KeepHistory = false // Remove release secrets as well
+	uninstall.DisableHooks = false
+	uninstall.Timeout = 300 // seconds, adjust as needed
+	uninstall.Wait = true   // Wait for resources to be deleted
+
+	resp, err := uninstall.Run(releaseName)
+	if err != nil {
+		log.Printf("Failed to remove helm release: %s", err)
+	} else {
+		if resp != nil && resp.Info != "" {
+			log.Printf("Helm uninstall info: %s", resp.Info)
+		}
+	}
+
+	// Delete related jobs
+	selectorLabels := []string{
+		"release",
+		"app.kubernetes.io/instance",
+	}
+
+	for _, l := range selectorLabels {
+		selector := l + "=" + releaseName
+		list, _ := kubernetesClient.BatchV1().Jobs(namespace).List(context.TODO(), v1.ListOptions{
+			LabelSelector: selector,
+		})
+		for _, v := range list.Items {
+			log.Printf("Removing job: %s", v.Name)
+			propagationPolicy := v1.DeletePropagationBackground
+			kubernetesClient.BatchV1().Jobs(namespace).Delete(context.TODO(), v.Name, v1.DeleteOptions{PropagationPolicy: &propagationPolicy})
+		}
+	}
+
+	if deletePVCs {
+
+		// Find and remove related PVC's by release name label
+		PVC_client := kubernetesClient.CoreV1().PersistentVolumeClaims(namespace)
+
+		selectorLabels = []string{
+			"app",
+			"release",
+			"app.kubernetes.io/instance",
+		}
+
+		for _, l := range selectorLabels {
+			selector := l + "=" + releaseName
+			if l == "app" {
+				selector = l + "=" + releaseName + "-es"
+			}
+			list, _ := PVC_client.List(context.TODO(), v1.ListOptions{
+				LabelSelector: selector,
+			})
+
+			for _, v := range list.Items {
+				log.Printf("Removing PVC: %s", v.Name)
+				PVC_client.Delete(context.TODO(), v.Name, v1.DeleteOptions{})
+			}
+		}
+	}
+
+	return nil
 }

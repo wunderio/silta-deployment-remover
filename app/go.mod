@@ -4,6 +4,8 @@ go 1.24.0
 
 toolchain go1.24.4
 
+godebug multipathtcp=0
+
 require (
 	helm.sh/helm/v3 v3.18.5
 	k8s.io/apimachinery v0.33.3
